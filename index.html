@@ -1,0 +1,322 @@
+<!-- Alex Miller - Wordle - A4 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Wordle</title>
+    <style>
+        /* Styles for easy viewing */
+        body 
+        {
+            margin: 0;
+            padding: 0;
+            /* Everything looks best centered */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #7da19b; /* I hate plain white backgrounds, gross */
+        }
+
+        #gameContainer 
+        {
+            text-align: center;
+            width: 90%;
+            max-width: 600px;
+            padding: 20px;
+            box-sizing: border-box;
+            background-color: #fff; /* Fine, game container can be white */
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+        }
+
+        #displayWord 
+        {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        #letterJail 
+        {
+            margin-top: 10px;
+            color: red; /* Hopefully player gets the point not to re-use these letters */
+        }
+
+        #message p 
+        {
+            margin: 5px 0;
+        }
+
+        #scoreboard 
+        {
+            margin-top: 20px;
+            font-weight: bold;
+            white-space: pre-wrap;
+        }
+        
+        #debugArea 
+        {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        #debugDisplay 
+        {
+            color: grey; /* Yes it's hard to see, I don't want to make it too easy to guess the word */
+            margin-top: 10px;
+        }
+
+        pre.ascii-art 
+        {
+            font-family: monospace;
+            white-space: pre;
+            text-align: center;
+            color: white; /* White looks really good here ngl */
+        }
+    </style>
+</head>
+<body>
+
+    <pre class="ascii-art">
+__/\\\______________/\\\_______/\\\\\_________/\\\\\\\\\______/\\\\\\\\\\\\_____/\\\______________/\\\\\\\\\\\\\\\_        
+ _\/\\\_____________\/\\\_____/\\\///\\\_____/\\\///////\\\___\/\\\////////\\\__\/\\\_____________\/\\\///////////__       
+  _\/\\\_____________\/\\\___/\\\/__\///\\\__\/\\\_____\/\\\___\/\\\______\//\\\_\/\\\_____________\/\\\_____________      
+   _\//\\\____/\\\____/\\\___/\\\______\//\\\_\/\\\\\\\\\\\/____\/\\\_______\/\\\_\/\\\_____________\/\\\\\\\\\\\_____     
+    __\//\\\__/\\\\\__/\\\___\/\\\_______\/\\\_\/\\\//////\\\____\/\\\_______\/\\\_\/\\\_____________\/\\\///////______    
+     ___\//\\\/\\\/\\\/\\\____\//\\\______/\\\__\/\\\____\//\\\___\/\\\_______\/\\\_\/\\\_____________\/\\\_____________   
+      ____\//\\\\\\//\\\\\______\///\\\__/\\\____\/\\\_____\//\\\__\/\\\_______/\\\__\/\\\_____________\/\\\_____________  
+       _____\//\\\__\//\\\_________\///\\\\\/_____\/\\\______\//\\\_\/\\\\\\\\\\\\/___\/\\\\\\\\\\\\\\\_\/\\\\\\\\\\\\\\\_ 
+        ______\///____\///____________\/////_______\///________\///__\////////////_____\///////////////__\///////////////__
+  </pre>
+
+    <div id="gameContainer">
+        <!-- Found a great list of 5 letter words at https://www-cs-faculty.stanford.edu/~knuth/sgb-words.txt -->
+        <!-- However, they needed to be JSON. I don't use Python so I used PowerShell to turn the plain text into a JSON file -->
+        <!-- I uploaded the JSON file to my personal Github and made it publicly acessible -->
+        <!-- So now, I can run an API directly to that Github hosted JSON words file -->
+        <!-- ASCII ART thanks to https://patorjk.com/software/taag/ -->
+        <!-- Display for the partially guessed word (initially underscores) -->
+
+        <div id="displayWord">_____</div>
+
+        <!-- Text input for player to guess into, only 5 chars max -->
+        <input type="text" id="guessInput" maxlength="5" placeholder="Guess a 5 letter word">
+
+        <!-- Button to submit said guess -->
+        <button id="guessButton">Guess</button>
+
+        <!-- Area reserved for on-screen messages -->
+        <div id="message"></div>
+
+        <!-- Letter Jail: AKA letters not present in word and shouldn't be reused -->
+        <div id="letterJail"></div>
+
+        <!-- Scoring stuff. Wins, losses, & guesses -->
+        <div id="scoreboard">Wins: 0<br>Losses: 0<br>Guesses: 0</div>
+    </div>
+
+    <!-- Debug word toddle outside of the container for the game -->
+    <div id="debugArea">
+
+
+        <!-- Display hidden by default -->
+        <div id="debugDisplay" style="display: none;"></div>
+
+        <!-- Display toggle via button -->
+        <button id="debugButton" style="margin-top: 10px;">Debug</button>
+
+    </div>
+
+    <script>
+        //let's add all the functions up here so we can call them later
+
+        //clear/resetting all variables for each game
+        var guessCount = 0;
+        var maxGuesses = 6;
+        var wins = 0;
+        var losses = 0;
+        var revealedWord = ["_", "_", "_", "_", "_"]; //using underscores for blank/non-guesses for visibility
+        var letterJailSet = new Set();
+
+        //keeping the score
+        function updateScore()
+        {
+            document.getElementById("scoreboard").textContent = "Wins: " + wins + "\nLosses: " + losses + "\nGuesses: " + guessCount;
+        }
+
+        //here we load the raw JSON text for the words I uploaded to my github
+        function loadAndSelectWord()
+        {
+            var url = 'https://raw.githubusercontent.com/MasterZii/WordleWords/main/wordle-words.json';
+
+            fetch(url) //API return per guidelines
+                .then(function (response)
+                {
+                    if (!response.ok) //didn't work for some reason?
+                    {
+                        throw new Error('Response Error: ' + response.statusText); //what is the problem?
+                    }
+                    return response.json();
+                })
+
+                .then(function (words) //when we DO get data back...
+                {
+                    //a random word becomes a victim of this game
+                    var randomIndex = Math.floor(Math.random() * words.length); //need a temp variable to string through and choose a word
+                    var wordleSelectedWord = words[randomIndex]; //the random value return this word from the array
+
+                    //now we save that randomly chosen word as a hard variable for the game
+                    window.wordleSelectedWord = wordleSelectedWord;
+                    console.log('Selected Word:', wordleSelectedWord); //let's peek at it here
+                })
+
+                .catch(function (error) //in case all else fails
+                {
+                    console.error('Could not load JSON Wordle Words:', error);
+                });
+        }
+
+        //call the function to load a random word for our guessing
+        loadAndSelectWord();
+
+        //we need a function that will reset the game after a win/loss
+        function resetGame() {
+            guessCount = 0; //starting with no guesses
+            revealedWord = ["_", "_", "_", "_", "_"]; //starting with blank (underscores) for letter positions
+            letterJailSet.clear(); //ensuring the letter jail is reset each game
+            document.getElementById("displayWord").textContent = revealedWord.join("");
+            document.getElementById("letterJail").textContent = "";
+            document.getElementById("message").innerHTML = "";
+            document.getElementById("guessInput").value = "";
+            // Hide debug info on reset:
+            document.getElementById("debugDisplay").style.display = "none";
+            loadAndSelectWord();
+            updateScore();
+        }
+
+        //the function to process the player's guess
+        function processGuess()
+        {
+            //get input, convert to lowercase for ease of matching
+            var guessInput = document.getElementById("guessInput");
+            var guess = guessInput.value.trim().toLowerCase();
+
+            //ensure it's only alphabetic characters and only 5 characters total
+            if (!/^[a-z]{5}$/.test(guess))
+            {
+                alert("Please input only alphabetical characters!");
+                return;
+            }
+
+            //"Guesses must be 5 letter words (you will need to validate this)"
+            //So let's make sure it's a legitimate 5 letter English word
+            if (!window.wordleWords || !window.wordleWords.includes(guess))
+            {
+                alert("That ain't a real word. Enter only a real five-letter English word as your guess.");
+                return;
+            }
+
+            //what is our random word?
+            //let's make sure we have one loaded
+            var target = window.wordleSelectedWord;
+            if (!target)
+            {
+                alert("Wordle word must be processed first!");
+                return;
+            }
+
+            guessCount++; //after guessing, add to guess count limit
+
+            //just grabbing the divs where we display message and letters used
+            var messageDiv = document.getElementById("message");
+            var letterJailDiv = document.getElementById("letterJail");
+
+            //clear messages on screen
+            messageDiv.innerHTML = "";
+
+            //now the loop that goes through each letter on the screen
+            for (var i = 0; i < 5; i++)
+            {
+                var guessedLetter = guess[i];
+
+                //if guessed letter is in correct position, it's permamenet on screen now
+                if (guessedLetter === target[i])
+                {
+                    revealedWord[i] = guessedLetter;
+                } else if (target.includes(guessedLetter))
+                {
+                    //if letter exist but wrong position
+                    //show a message to the user that it exists
+                    var p = document.createElement("p");
+                    p.textContent = "'" + guessedLetter + "' is present in this word.";
+                    messageDiv.appendChild(p);
+                    //let's make sure the revealed word doesn't change up on screen
+                } else
+                {
+                    //if the letter doesn't exist at all, we add it to the jail
+                    letterJailSet.add(guessedLetter);
+                }
+            }
+
+            //update the word that's displayed to show all permanent letters
+            var displayWordDiv = document.getElementById("displayWord");
+            displayWordDiv.textContent = revealedWord.join("");
+
+            //letter jail updated for any/all new letters
+            if (letterJailSet.size > 0)
+            {
+                letterJailDiv.textContent = "Letter Jail: " + Array.from(letterJailSet).join(", ");
+            } else {
+                letterJailDiv.textContent = "";
+            }
+
+            //each game, we update the score
+            updateScore();
+
+            //does the guessed word match the random Wordle word exactly?
+            if (revealedWord.join("") === target)
+            {
+                wins++;
+                updateScore();
+                alert("You win! The Wordle word was in fact: " + target + "!");
+                resetGame();
+                return;
+            }
+
+            //when guesses reach 6 and still no win
+            if (guessCount >= maxGuesses)
+            {
+                losses++;
+                updateScore();
+                alert("So close! The Wordle word was actually: " + target + "!");
+                resetGame();
+                return;
+            }
+
+            //clear input for a new game
+            guessInput.value = "";
+        }
+
+        //guess button needs to be able to process the guess for the game
+        document.getElementById("guessButton").addEventListener("click", processGuess);
+
+        //this function shows/hides the sacrificial word of the game for debug purposes
+        function toggleDebug()
+        {
+            var debugDisplay = document.getElementById("debugDisplay");
+            if (debugDisplay.style.display === "none" || debugDisplay.style.display === "")
+            {
+                debugDisplay.textContent = "Debug Word: " + window.wordleSelectedWord; //so we can see it
+                debugDisplay.style.display = "block";
+            } else
+            {
+                debugDisplay.style.display = "none";
+            }
+        }
+
+        //So that the debug button at the bottom is linked to the word toggle show/hide
+        document.getElementById("debugButton").addEventListener("click", toggleDebug);
+    </script>
+</body>
+</html>
