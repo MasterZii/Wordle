@@ -162,6 +162,10 @@ __/\\\______________/\\\_______/\\\\\_________/\\\\\\\\\______/\\\\\\\\\\\\_____
 
                 .then(function (words) //when we DO get data back...
                 {
+
+                    //save on the API calls and keep the word list local
+                    window.wordleWords = words;
+
                     //a random word becomes a victim of this game
                     var randomIndex = Math.floor(Math.random() * words.length); //need a temp variable to string through and choose a word
                     var wordleSelectedWord = words[randomIndex]; //the random value return this word from the array
@@ -180,6 +184,18 @@ __/\\\______________/\\\_______/\\\\\_________/\\\\\\\\\______/\\\\\\\\\\\\_____
         //call the function to load a random word for our guessing
         loadAndSelectWord();
 
+        //is the word input, a real word? 
+        function isValidWord(guess)
+        {
+            //is the word list loaded up at all?
+            if (!window.wordleWords || window.wordleWords.length === 0)
+            {
+                alert("Bear patience, something is loading here...");
+                return false;
+            }
+            return window.wordleWords.includes(guess);
+        }
+
         //we need a function that will reset the game after a win/loss
         function resetGame() {
             guessCount = 0; //starting with no guesses
@@ -189,7 +205,7 @@ __/\\\______________/\\\_______/\\\\\_________/\\\\\\\\\______/\\\\\\\\\\\\_____
             document.getElementById("letterJail").textContent = "";
             document.getElementById("message").innerHTML = "";
             document.getElementById("guessInput").value = "";
-            // Hide debug info on reset:
+            //hide debug word when resetting game
             document.getElementById("debugDisplay").style.display = "none";
             loadAndSelectWord();
             updateScore();
@@ -210,8 +226,8 @@ __/\\\______________/\\\_______/\\\\\_________/\\\\\\\\\______/\\\\\\\\\\\\_____
             }
 
             //"Guesses must be 5 letter words (you will need to validate this)"
-            //So let's make sure it's a legitimate 5 letter English word
-            if (!window.wordleWords || !window.wordleWords.includes(guess))
+            //So let's make sure it's a legitimate 5 letter English word using our new function
+            if (!isValidWord(guess))
             {
                 alert("That ain't a real word. Enter only a real five-letter English word as your guess.");
                 return;
@@ -315,7 +331,7 @@ __/\\\______________/\\\_______/\\\\\_________/\\\\\\\\\______/\\\\\\\\\\\\_____
             }
         }
 
-        //So that the debug button at the bottom is linked to the word toggle show/hide
+        //so that the debug button at the bottom is linked to the word toggle show/hide
         document.getElementById("debugButton").addEventListener("click", toggleDebug);
     </script>
 </body>
